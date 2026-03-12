@@ -6,5 +6,6 @@ type WhatsappMessage struct {
 	GroupName string
 	SenderId string
 	SenderName string
+	Destination string
 	Message string
 }

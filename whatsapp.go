@@ -8,14 +8,15 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/mdp/qrterminal"
 	"go.mau.fi/whatsmeow"
-	// "go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/types"
+	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/store/sqlstore"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
 )
 func init_whatsapp(
 	wg *sync.WaitGroup,
-	from_discord chan string,
+	from_discord chan WhatsappMessage,
 	to_discord chan WhatsappMessage,
 	shutdown_chan chan bool,
 ) {
@@ -60,6 +61,11 @@ func init_whatsapp(
 	defer client.Disconnect()
 	for {
 		select {
+			case msg := <- from_discord:
+				var message waE2E.Message
+				message.Conversation = &msg.Message
+				reciever, _ := types.ParseJID(msg.Destination)
+				client.SendMessage(context.Background(), reciever, &message)
 			case shutdown := <- shutdown_chan:
 				if shutdown {
 					return
@@ -76,6 +82,10 @@ func makeEventHandler(client *whatsmeow.Client, out_chan chan WhatsappMessage) (
 		whatsapp_client := client
 		switch v := evt.(type) {
 		case *events.Message:
+			if *client.Store.ID == v.Info.Sender {
+				//If I sent the message, don't forward it to discord
+				return
+			}
 			var fwd_message  WhatsappMessage
 			fwd_message.IsGroup = v.Info.IsGroup
 			if (v.Info.IsGroup) {

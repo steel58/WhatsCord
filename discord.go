@@ -15,44 +15,11 @@ type ChatBindings struct {
 	WhatsappId string `json:"whatsapp_id"`
 }
 
-// Create get found chats function
-func init_chat_bindings(filepath string, bindings *[]ChatBindings) (error) {
-	content, err := os.ReadFile(filepath)
-	if err != nil { 
-		return err
-	}
-
-	err = json.Unmarshal(content, &bindings)
-	if err != nil { 
-		return err
-	}
-	return nil
-}
-// Create serialize chats function that can be defered and saves all current chats to the json file
-func store_chat_bindings(filepath string, bindings *[]ChatBindings) (error) {
-	file, err := os.Create(filepath)
-	if err != nil {
-		return err
-	}
-
-	bytes, err := json.Marshal(bindings)
-	if err != nil {
-		return err
-	}
-	_, err = file.Write(bytes)
-
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 
 func init_discord(
 	wg *sync.WaitGroup,
 	from_whatsapp chan WhatsappMessage,
-	to_whatsapp chan string, 
+	to_whatsapp chan WhatsappMessage, 
 	shutdown_chan chan bool,
 ) {
 	defer wg.Done()
@@ -82,7 +49,7 @@ func init_discord(
 
 	// Register the messageCreate function as a callback for the MessageCreate event.
 	power := make(chan bool)
-	discordMessageHandler := makeMessageHandler(&bindings, power)
+	discordMessageHandler := makeMessageHandler(&bindings, to_whatsapp, power)
 	dg.AddHandler(discordMessageHandler)
 
 	// Open a websocket connection to Discord and begin listening.
@@ -145,9 +112,16 @@ func forwardWhatsappMessage(msg WhatsappMessage, bindings *[]ChatBindings)(strin
 // Add a constructor for the handler that passes in our array of places so we can use it when
 // we call !connect
 
-func makeMessageHandler(bindings *[]ChatBindings, power chan bool) (messageHandler func(*discordgo.Session, *discordgo.MessageCreate)) {
+func makeMessageHandler(
+	bindings *[]ChatBindings,
+	to_whatsapp chan WhatsappMessage,
+	power chan bool,
+) (
+	messageHandler func(*discordgo.Session, *discordgo.MessageCreate),
+) {
 	messageHandler = func(s *discordgo.Session, m *discordgo.MessageCreate) {
 		chat_bindings := bindings
+		forward_chan := to_whatsapp
 		// Ignore messages from the bot itself.
 		if m.Author.ID == s.State.User.ID {
 			return
@@ -179,7 +153,48 @@ func makeMessageHandler(bindings *[]ChatBindings, power chan bool) (messageHandl
 		}
 
 		// Forward any message to whatsapp side
+		for _, binding := range *bindings {
+			if binding.ChannelId == m.ChannelID {
+				var new_message WhatsappMessage
+				new_message.Destination = binding.WhatsappId
+				new_message.Message = m.Content
+				forward_chan <- new_message
+				return
+			}
+		}
+	}
+	return
+}
+
+// Create get found chats function
+func init_chat_bindings(filepath string, bindings *[]ChatBindings) (error) {
+	content, err := os.ReadFile(filepath)
+	if err != nil { 
+		return err
 	}
 
-	return
+	err = json.Unmarshal(content, &bindings)
+	if err != nil { 
+		return err
+	}
+	return nil
+}
+// Create serialize chats function that can be defered and saves all current chats to the json file
+func store_chat_bindings(filepath string, bindings *[]ChatBindings) (error) {
+	file, err := os.Create(filepath)
+	if err != nil {
+		return err
+	}
+
+	bytes, err := json.Marshal(bindings)
+	if err != nil {
+		return err
+	}
+	_, err = file.Write(bytes)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
