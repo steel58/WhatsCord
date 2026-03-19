@@ -146,6 +146,19 @@ func makeMessageHandler(
 			s.ChannelMessageSend(m.ChannelID, "Bound Chat Here")
 			return
 		}
+		if strings.HasPrefix(m.Content, "!disconnect") {
+			// remove chat from thing
+			var index int
+			for i, binding := range *bindings {
+				if m.ChannelID == binding.ChannelId {
+					index = i
+					break
+				}
+			}
+			*bindings = append((*bindings)[:index], (*bindings)[index + 1])
+			s.ChannelMessageSend(m.ChannelID, "Unbound Chat Here")
+			return
+		}
 		if strings.HasPrefix(m.Content, "!shutdown") {
 			s.ChannelMessageSend(m.ChannelID, "Shutting Down")
 			power <- true
